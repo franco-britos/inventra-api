@@ -1,0 +1,237 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// =======================
+// ENUMS
+// =======================
+
+enum LocationType {
+  warehouse
+  store
+}
+
+enum EmployeeRole {
+  owner
+  manager
+  staff
+}
+
+enum TransactionType {
+  sale
+  purchase
+  adjustment
+  return
+  transfer
+}
+
+// =======================
+// COMPANY
+// =======================
+
+model Company {
+  id          String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyName String @map("company_name") @db.VarChar
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  locations             Location[]
+  employees             Employee[]
+  products              Product[]
+  inventories           Inventory[]
+  inventoryTransactions InventoryTransaction[]
+  invites               Invite[]
+
+  @@map("company")
+}
+
+// =======================
+// APP USER (AUTH)
+// =======================
+
+model AppUser {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  email                  String    @unique @db.VarChar
+  passwordHash           String?   @map("password_hash") @db.VarChar
+  emailVerified          Boolean   @default(false) @map("email_verified")
+  isActive               Boolean   @default(true) @map("is_active")
+
+  lastLoginAt            DateTime? @map("last_login_at") @db.Timestamptz
+  passwordResetToken     String?   @map("password_reset_token") @db.VarChar
+  passwordResetExpiresAt DateTime? @map("password_reset_expires_at") @db.Timestamptz
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  employees Employee[]
+
+  @@index([passwordResetToken])
+  @@map("app_user")
+}
+
+// =======================
+// LOCATION
+// =======================
+
+model Location {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  companyId    String       @map("company_id") @db.Uuid
+  address      String       @db.VarChar
+  locationType LocationType @map("location_type")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  employees   Employee[]
+  inventories Inventory[]
+
+  @@index([companyId])
+  @@map("location")
+}
+
+// =======================
+// EMPLOYEE (USER <-> COMPANY)
+// =======================
+
+model Employee {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  userId     String  @map("user_id") @db.Uuid
+  companyId  String  @map("company_id") @db.Uuid
+  locationId String? @map("location_id") @db.Uuid
+
+  firstName String       @map("first_name") @db.VarChar
+  lastName  String       @map("last_name") @db.VarChar
+  jobTitle  String?      @map("job_title") @db.VarChar
+  role      EmployeeRole @default(staff)
+
+  isActive Boolean   @default(true) @map("is_active")
+  endedAt  DateTime? @map("ended_at") @db.Timestamptz
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  user     AppUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  location Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+
+  inventoryTransactions InventoryTransaction[]
+
+  @@unique([userId, companyId])
+  @@index([locationId])
+  @@map("employee")
+}
+
+// =======================
+// PRODUCT (COMPANY-WIDE)
+// =======================
+
+model Product {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  companyId   String  @map("company_id") @db.Uuid
+  productName String  @map("product_name") @db.VarChar
+  sku         String  @db.VarChar
+  price       Decimal @db.Decimal(10, 2)
+  description String? @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  inventories Inventory[]
+
+  @@unique([companyId, sku])
+  @@unique([companyId, productName])
+  @@map("product")
+}
+
+// =======================
+// INVENTORY (PER LOCATION)
+// =======================
+
+model Inventory {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  productId  String @map("product_id") @db.Uuid
+  locationId String @map("location_id") @db.Uuid
+  companyId  String @map("company_id") @db.Uuid
+  quantity   Int
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
+  company  Company  @relation(fields: [companyId], references: [id])
+
+  inventoryTransactions InventoryTransaction[]
+
+  @@unique([productId, locationId])
+  @@map("inventory")
+}
+
+// =======================
+// INVENTORY TRANSACTIONS
+// =======================
+
+model InventoryTransaction {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  inventoryId     String          @map("inventory_id") @db.Uuid
+  companyId       String          @map("company_id") @db.Uuid
+  employeeId      String?         @map("employee_id") @db.Uuid
+  transactionType TransactionType @map("transaction_type")
+
+  quantityChange Int      @map("quantity_change")
+  unitCost       Decimal? @map("unit_cost") @db.Decimal(10, 2)
+  reference      String?  @db.VarChar
+  notes          String?  @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  inventory Inventory @relation(fields: [inventoryId], references: [id], onDelete: Restrict)
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
+  employee  Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  @@index([inventoryId])
+  @@index([companyId])
+  @@index([employeeId])
+  @@index([createdAt])
+  @@map("inventory_transaction")
+}
+
+// =======================
+// INVITE
+// =======================
+
+model Invite {
+  id         String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId  String       @map("company_id") @db.Uuid
+  email      String       @db.VarChar
+  role       EmployeeRole
+  firstName  String       @map("first_name") @db.VarChar
+  lastName   String       @map("last_name") @db.VarChar
+  token      String       @unique @db.VarChar
+  expiresAt  DateTime     @map("expires_at") @db.Timestamptz
+  acceptedAt DateTime?    @map("accepted_at") @db.Timestamptz
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([email])
+  @@map("invite")
+}
