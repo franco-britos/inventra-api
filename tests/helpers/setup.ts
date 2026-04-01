@@ -13,11 +13,12 @@ export const testPrisma = new PrismaClient({ adapter });
  */
 export async function resetDatabase() {
   await testPrisma.inventoryTransaction.deleteMany();
+  await testPrisma.client.deleteMany();
   await testPrisma.inventory.deleteMany();
   await testPrisma.product.deleteMany();
   await testPrisma.invite.deleteMany();
   await testPrisma.employee.deleteMany();
-  await testPrisma.location.deleteMany();
+  await testPrisma.site.deleteMany();
   await testPrisma.company.deleteMany();
   await testPrisma.appUser.deleteMany();
 }

@@ -14,14 +14,14 @@ router.get("/", validateUUIDParams("companyId"), async (req, res) => {
       id: true,
       firstName: true,
       lastName: true,
-      jobTitle: true,
+      role: true,
       isActive: true,
       createdAt: true,
-      location: {
+      site: {
         select: {
           id: true,
           address: true,
-          locationType: true,
+          siteType: true,
         },
       },
     },
@@ -43,16 +43,16 @@ router.get(
         id: true,
         firstName: true,
         lastName: true,
-        jobTitle: true,
+        role: true,
         isActive: true,
         endedAt: true,
         createdAt: true,
         updatedAt: true,
-        location: {
+        site: {
           select: {
             id: true,
             address: true,
-            locationType: true,
+            siteType: true,
           },
         },
         user: {

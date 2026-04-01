@@ -3,6 +3,7 @@ import { registerSchema, loginSchema, refreshSchema } from "../../src/schemas/au
 import { createCompanySchema } from "../../src/schemas/company";
 import { createProductSchema } from "../../src/schemas/product";
 import { createInviteSchema } from "../../src/schemas/invite";
+import { createSiteSchema } from "../../src/schemas/site";
 import {
   receiveStockSchema,
   sellStockSchema,
@@ -12,10 +13,10 @@ import {
 // ── Auth schemas ─────────────────────────────────────────────────
 
 describe("registerSchema", () => {
-  it("accepts valid email and password", () => {
+  it("accepts valid email and strong password", () => {
     const result = registerSchema.safeParse({
       email: "user@example.com",
-      password: "securepass",
+      password: "Str0ng!pass",
     });
     expect(result.success).toBe(true);
   });
@@ -23,7 +24,7 @@ describe("registerSchema", () => {
   it("rejects invalid email", () => {
     const result = registerSchema.safeParse({
       email: "not-an-email",
-      password: "securepass",
+      password: "Str0ng!pass",
     });
     expect(result.success).toBe(false);
   });
@@ -31,7 +32,39 @@ describe("registerSchema", () => {
   it("rejects short password", () => {
     const result = registerSchema.safeParse({
       email: "user@example.com",
-      password: "short",
+      password: "Ab1!",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects password without uppercase", () => {
+    const result = registerSchema.safeParse({
+      email: "user@example.com",
+      password: "nouppercase1!",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects password without lowercase", () => {
+    const result = registerSchema.safeParse({
+      email: "user@example.com",
+      password: "NOLOWERCASE1!",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects password without digit", () => {
+    const result = registerSchema.safeParse({
+      email: "user@example.com",
+      password: "NoDigitHere!",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects password without special character", () => {
+    const result = registerSchema.safeParse({
+      email: "user@example.com",
+      password: "NoSpecial1here",
     });
     expect(result.success).toBe(false);
   });
@@ -84,18 +117,6 @@ describe("createCompanySchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("accepts optional jobTitle", () => {
-    const result = createCompanySchema.safeParse({
-      companyName: "Acme Inc",
-      firstName: "Jane",
-      lastName: "Doe",
-      jobTitle: "CEO",
-    });
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.jobTitle).toBe("CEO");
-    }
-  });
 
   it("rejects empty company name", () => {
     const result = createCompanySchema.safeParse({
@@ -145,6 +166,36 @@ describe("createProductSchema", () => {
       description: "A fine widget",
     });
     expect(result.success).toBe(true);
+  });
+
+  it("accepts optional lowStockThreshold", () => {
+    const result = createProductSchema.safeParse({
+      productName: "Widget",
+      sku: "WDG-001",
+      price: 10,
+      lowStockThreshold: 25,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects lowStockThreshold above 99999", () => {
+    const result = createProductSchema.safeParse({
+      productName: "Widget",
+      sku: "WDG-001",
+      price: 10,
+      lowStockThreshold: 100000,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects negative lowStockThreshold", () => {
+    const result = createProductSchema.safeParse({
+      productName: "Widget",
+      sku: "WDG-001",
+      price: 10,
+      lowStockThreshold: -1,
+    });
+    expect(result.success).toBe(false);
   });
 });
 
@@ -200,8 +251,9 @@ describe("receiveStockSchema", () => {
   it("accepts valid receive data", () => {
     const result = receiveStockSchema.safeParse({
       productId: VALID_UUID,
-      locationId: VALID_UUID,
+      siteId: VALID_UUID,
       quantity: 50,
+      unitCost: 9.99,
     });
     expect(result.success).toBe(true);
   });
@@ -209,7 +261,7 @@ describe("receiveStockSchema", () => {
   it("rejects zero quantity", () => {
     const result = receiveStockSchema.safeParse({
       productId: VALID_UUID,
-      locationId: VALID_UUID,
+      siteId: VALID_UUID,
       quantity: 0,
     });
     expect(result.success).toBe(false);
@@ -218,7 +270,7 @@ describe("receiveStockSchema", () => {
   it("rejects negative quantity", () => {
     const result = receiveStockSchema.safeParse({
       productId: VALID_UUID,
-      locationId: VALID_UUID,
+      siteId: VALID_UUID,
       quantity: -5,
     });
     expect(result.success).toBe(false);
@@ -227,7 +279,7 @@ describe("receiveStockSchema", () => {
   it("rejects non-UUID productId", () => {
     const result = receiveStockSchema.safeParse({
       productId: "not-a-uuid",
-      locationId: VALID_UUID,
+      siteId: VALID_UUID,
       quantity: 10,
     });
     expect(result.success).toBe(false);
@@ -238,7 +290,8 @@ describe("sellStockSchema", () => {
   it("accepts valid sale data with optional fields", () => {
     const result = sellStockSchema.safeParse({
       productId: VALID_UUID,
-      locationId: VALID_UUID,
+      siteId: VALID_UUID,
+      clientId: VALID_UUID,
       quantity: 10,
       unitCost: 5.99,
       reference: "INV-100",
@@ -252,8 +305,9 @@ describe("adjustStockSchema", () => {
   it("accepts positive adjustment", () => {
     const result = adjustStockSchema.safeParse({
       productId: VALID_UUID,
-      locationId: VALID_UUID,
+      siteId: VALID_UUID,
       quantity: 5,
+      transactionType: "adjustment",
     });
     expect(result.success).toBe(true);
   });
@@ -261,8 +315,19 @@ describe("adjustStockSchema", () => {
   it("accepts negative adjustment", () => {
     const result = adjustStockSchema.safeParse({
       productId: VALID_UUID,
-      locationId: VALID_UUID,
+      siteId: VALID_UUID,
       quantity: -3,
+      transactionType: "adjustment",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts return type", () => {
+    const result = adjustStockSchema.safeParse({
+      productId: VALID_UUID,
+      siteId: VALID_UUID,
+      quantity: 2,
+      transactionType: "return",
     });
     expect(result.success).toBe(true);
   });
@@ -270,9 +335,141 @@ describe("adjustStockSchema", () => {
   it("rejects zero adjustment", () => {
     const result = adjustStockSchema.safeParse({
       productId: VALID_UUID,
-      locationId: VALID_UUID,
+      siteId: VALID_UUID,
       quantity: 0,
+      transactionType: "adjustment",
     });
     expect(result.success).toBe(false);
+  });
+
+  it("rejects missing transactionType", () => {
+    const result = adjustStockSchema.safeParse({
+      productId: VALID_UUID,
+      siteId: VALID_UUID,
+      quantity: 5,
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ── Site schema ─────────────────────────────────────────────────
+
+describe("createSiteSchema", () => {
+  it("accepts minimal site (address + type only)", () => {
+    const result = createSiteSchema.safeParse({
+      address: "123 Main St",
+      siteType: "warehouse",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts site with all structured address fields", () => {
+    const result = createSiteSchema.safeParse({
+      address: "456 Market St",
+      unit: "Suite 200",
+      city: "San Francisco",
+      state: "CA",
+      zipCode: "94105",
+      country: "US",
+      placeId: "ChIJ_xyz789",
+      siteType: "store",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.unit).toBe("Suite 200");
+      expect(result.data.city).toBe("San Francisco");
+      expect(result.data.state).toBe("CA");
+      expect(result.data.zipCode).toBe("94105");
+      expect(result.data.country).toBe("US");
+      expect(result.data.placeId).toBe("ChIJ_xyz789");
+    }
+  });
+
+  it("accepts vehicle site when VIN is provided", () => {
+    const result = createSiteSchema.safeParse({
+      siteType: "vehicle",
+      vin: "1HGCM82633A123456",
+      licensePlate: "ABC-1234",
+      shortDescription: "Night shift vehicle",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects vehicle site without VIN", () => {
+    const result = createSiteSchema.safeParse({
+      siteType: "vehicle",
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.flatten().fieldErrors.vin?.[0]).toBe(
+        "VIN is required for vehicle sites."
+      );
+    }
+  });
+
+  it("requires address for non-vehicle sites", () => {
+    const result = createSiteSchema.safeParse({
+      siteType: "warehouse",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects empty address", () => {
+    const result = createSiteSchema.safeParse({
+      address: "",
+      siteType: "warehouse",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects invalid site type", () => {
+    const result = createSiteSchema.safeParse({
+      address: "123 Main St",
+      siteType: "garage",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects unit exceeding max length", () => {
+    const result = createSiteSchema.safeParse({
+      address: "123 Main St",
+      unit: "A".repeat(51),
+      siteType: "warehouse",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects city exceeding max length", () => {
+    const result = createSiteSchema.safeParse({
+      address: "123 Main St",
+      city: "A".repeat(101),
+      siteType: "warehouse",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects zipCode exceeding max length", () => {
+    const result = createSiteSchema.safeParse({
+      address: "123 Main St",
+      zipCode: "1".repeat(21),
+      siteType: "warehouse",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("structured fields are optional (undefined is fine)", () => {
+    const result = createSiteSchema.safeParse({
+      address: "123 Main St",
+      siteType: "store",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.unit).toBeUndefined();
+      expect(result.data.city).toBeUndefined();
+      expect(result.data.state).toBeUndefined();
+      expect(result.data.zipCode).toBeUndefined();
+      expect(result.data.country).toBeUndefined();
+      expect(result.data.placeId).toBeUndefined();
+    }
   });
 });

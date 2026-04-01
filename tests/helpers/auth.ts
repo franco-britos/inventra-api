@@ -19,7 +19,7 @@ export async function registerUser(
 ): Promise<RegisteredUser> {
   userCounter++;
   const email = overrides.email ?? `testuser${userCounter}@test.com`;
-  const password = overrides.password ?? "testpassword123";
+  const password = overrides.password ?? "Test@pass1";
 
   const res = await request(app)
     .post("/api/v1/auth/register")

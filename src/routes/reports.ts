@@ -2,7 +2,7 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma";
 import { validateQuery, param } from "../middleware/validate";
 import {
-  stockByLocationQuerySchema,
+  stockBySiteQuerySchema,
   transactionHistoryQuerySchema,
   lowStockQuerySchema,
 } from "../schemas/query";
@@ -10,20 +10,20 @@ import {
 /** Mounted at /companies/:companyId/reports */
 const router = Router({ mergeParams: true });
 
-// ── GET /stock-by-location ───────────────────────────────────────
-// Returns inventory grouped by location with total items and total value.
+// ── GET /stock-by-site ───────────────────────────────────────
+// Returns inventory grouped by site with total items and total value.
 
 router.get(
-  "/stock-by-location",
-  validateQuery(stockByLocationQuerySchema),
+  "/stock-by-site",
+  validateQuery(stockBySiteQuerySchema),
   async (req, res) => {
     const companyId = param(req, "companyId");
-    const { locationId } = (req.validatedQuery ?? {}) as {
-      locationId?: string;
+    const { siteId } = (req.validatedQuery ?? {}) as {
+      siteId?: string;
     };
 
-    const where: { companyId: string; locationId?: string } = { companyId };
-    if (locationId) where.locationId = locationId;
+    const where: { companyId: string; siteId?: string } = { companyId };
+    if (siteId) where.siteId = siteId;
 
     const inventory = await prisma.inventory.findMany({
       where,
@@ -37,25 +37,30 @@ router.get(
             price: true,
           },
         },
-        location: {
+        site: {
           select: {
             id: true,
             address: true,
-            locationType: true,
+            unit: true,
+            city: true,
+            state: true,
+            zipCode: true,
+            country: true,
+            siteType: true,
           },
         },
       },
       orderBy: [
-        { location: { address: "asc" } },
+        { site: { address: "asc" } },
         { product: { productName: "asc" } },
       ],
     });
 
-    // Group by location
-    const locationMap = new Map<
+    // Group by site
+    const siteMap = new Map<
       string,
       {
-        location: { id: string; address: string; locationType: string };
+        site: { id: string; address: string; siteType: string };
         items: {
           product: { id: string; productName: string; sku: string; price: string };
           quantity: number;
@@ -67,16 +72,16 @@ router.get(
     >();
 
     for (const row of inventory) {
-      const locId = row.location.id;
-      if (!locationMap.has(locId)) {
-        locationMap.set(locId, {
-          location: row.location,
+      const siteId = row.site.id;
+      if (!siteMap.has(siteId)) {
+        siteMap.set(siteId, {
+          site: row.site,
           items: [],
           totalItems: 0,
           totalValue: 0,
         });
       }
-      const group = locationMap.get(locId)!;
+      const group = siteMap.get(siteId)!;
       const value = row.quantity * Number(row.product.price);
       group.items.push({
         product: {
@@ -92,7 +97,7 @@ router.get(
       group.totalValue = Math.round((group.totalValue + value) * 100) / 100;
     }
 
-    res.json(Array.from(locationMap.values()));
+    res.json(Array.from(siteMap.values()));
   }
 );
 
@@ -104,17 +109,21 @@ router.get(
   validateQuery(transactionHistoryQuerySchema),
   async (req, res) => {
     const companyId = param(req, "companyId");
-    const { from, to, type, employeeId, productId, limit } =
+    const { transactionId, from, to, type, employeeId, productId, productName, siteId, limit } =
       (req.validatedQuery ?? {}) as {
+        transactionId?: string;
         from?: Date;
         to?: Date;
         type?: string;
         employeeId?: string;
         productId?: string;
+        productName?: string;
+        siteId?: string;
         limit: number;
       };
 
     const where: Record<string, unknown> = { companyId };
+    if (transactionId) where.id = transactionId;
 
     // Date range filter
     if (from || to) {
@@ -126,7 +135,16 @@ router.get(
 
     if (type) where.transactionType = type;
     if (employeeId) where.employeeId = employeeId;
-    if (productId) where.inventory = { productId };
+
+    const inventoryFilter: Record<string, unknown> = {};
+    if (productId) inventoryFilter.productId = productId;
+    if (productName) {
+      inventoryFilter.product = {
+        productName: { contains: productName, mode: "insensitive" },
+      };
+    }
+    if (siteId) inventoryFilter.siteId = siteId;
+    if (Object.keys(inventoryFilter).length > 0) where.inventory = inventoryFilter;
 
     const transactions = await prisma.inventoryTransaction.findMany({
       where,
@@ -137,6 +155,8 @@ router.get(
         transactionType: true,
         quantityChange: true,
         unitCost: true,
+        costBasisUnitCost: true,
+        cogsAmount: true,
         reference: true,
         notes: true,
         createdAt: true,
@@ -145,13 +165,16 @@ router.get(
             product: {
               select: { id: true, productName: true, sku: true },
             },
-            location: {
+            site: {
               select: { id: true, address: true },
             },
           },
         },
         employee: {
           select: { id: true, firstName: true, lastName: true },
+        },
+        client: {
+          select: { id: true, businessName: true, businessStoreId: true },
         },
       },
     });
@@ -161,36 +184,57 @@ router.get(
       count: transactions.length,
       totalIn: 0,
       totalOut: 0,
+      netStockChange: 0,
+      revenue: 0,
+      purchaseCost: 0,
+      grossProfit: 0,
     };
     for (const tx of transactions) {
       if (tx.quantityChange > 0) summary.totalIn += tx.quantityChange;
       else summary.totalOut += Math.abs(tx.quantityChange);
+
+      if (tx.transactionType === "sale" && tx.unitCost != null) {
+        summary.revenue += Math.abs(tx.quantityChange) * Number(tx.unitCost);
+      }
+      if (tx.transactionType === "sale") {
+        const cogs =
+          tx.cogsAmount != null
+            ? Number(tx.cogsAmount)
+            : tx.costBasisUnitCost != null
+              ? Math.abs(tx.quantityChange) * Number(tx.costBasisUnitCost)
+              : 0;
+        summary.purchaseCost += cogs;
+      }
     }
+    summary.netStockChange = summary.totalIn - summary.totalOut;
+    summary.revenue = Math.round(summary.revenue * 100) / 100;
+    summary.purchaseCost = Math.round(summary.purchaseCost * 100) / 100;
+    summary.grossProfit = Math.round((summary.revenue - summary.purchaseCost) * 100) / 100;
 
     res.json({ summary, transactions });
   }
 );
 
 // ── GET /low-stock ───────────────────────────────────────────────
-// Returns inventory items at or below a threshold (default 10).
+// Returns inventory items at or below a threshold.
+// When `threshold` query param is provided it acts as a global override;
+// otherwise each product's own `lowStockThreshold` is used.
 
 router.get(
   "/low-stock",
   validateQuery(lowStockQuerySchema),
   async (req, res) => {
     const companyId = param(req, "companyId");
-    const { threshold, locationId } = (req.validatedQuery ?? {}) as {
-      threshold: number;
-      locationId?: string;
+    const { threshold, siteId } = (req.validatedQuery ?? {}) as {
+      threshold?: number;
+      siteId?: string;
     };
 
-    const where: Record<string, unknown> = {
-      companyId,
-      quantity: { lte: threshold },
-    };
-    if (locationId) where.locationId = locationId;
+    const where: Record<string, unknown> = { companyId };
+    if (siteId) where.siteId = siteId;
+    if (threshold != null) where.quantity = { lte: threshold };
 
-    const items = await prisma.inventory.findMany({
+    const rows = await prisma.inventory.findMany({
       where,
       orderBy: { quantity: "asc" },
       select: {
@@ -203,20 +247,31 @@ router.get(
             productName: true,
             sku: true,
             price: true,
+            lowStockThreshold: true,
           },
         },
-        location: {
+        site: {
           select: {
             id: true,
             address: true,
-            locationType: true,
+            unit: true,
+            city: true,
+            state: true,
+            zipCode: true,
+            country: true,
+            siteType: true,
           },
         },
       },
     });
 
+    const items =
+      threshold != null
+        ? rows
+        : rows.filter((r) => r.quantity <= r.product.lowStockThreshold);
+
     res.json({
-      threshold,
+      threshold: threshold ?? null,
       count: items.length,
       items,
     });

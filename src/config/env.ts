@@ -21,4 +21,8 @@ export const env = {
   JWT_REFRESH_SECRET: requireEnv("JWT_REFRESH_SECRET"),
   JWT_ACCESS_EXPIRES_IN: process.env["JWT_ACCESS_EXPIRES_IN"] ?? "15m",
   JWT_REFRESH_EXPIRES_IN: process.env["JWT_REFRESH_EXPIRES_IN"] ?? "7d",
+
+  // Email (Resend)
+  RESEND_API_KEY: process.env["RESEND_API_KEY"] ?? "",
+  APP_URL: process.env["APP_URL"] ?? "http://localhost:5173",
 } as const;

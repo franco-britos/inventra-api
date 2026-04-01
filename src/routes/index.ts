@@ -2,7 +2,8 @@ import { Router } from "express";
 import { validateUUIDParams } from "../middleware/validate";
 import { authorizeCompanyAccess } from "../middleware/authorize";
 import companiesRouter from "./companies";
-import locationsRouter from "./locations";
+import sitesRouter from "./sites";
+import clientsRouter from "./clients";
 import employeesRouter from "./employees";
 import productsRouter from "./products";
 import inventoryRouter from "./inventory";
@@ -21,7 +22,8 @@ router.use("/invites", inviteAcceptRouter);
 // Company-scoped routes — require active employee membership
 const companyGuard = [validateUUIDParams("companyId"), authorizeCompanyAccess];
 
-router.use("/companies/:companyId/locations", ...companyGuard, locationsRouter);
+router.use("/companies/:companyId/sites", ...companyGuard, sitesRouter);
+router.use("/companies/:companyId/clients", ...companyGuard, clientsRouter);
 router.use("/companies/:companyId/employees", ...companyGuard, employeesRouter);
 router.use("/companies/:companyId/products", ...companyGuard, productsRouter);
 router.use("/companies/:companyId/inventory", ...companyGuard, inventoryRouter);

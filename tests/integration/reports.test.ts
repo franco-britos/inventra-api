@@ -12,33 +12,49 @@ describe("Reporting endpoints", () => {
   let productBId: string;
   let warehouseId: string;
   let storeId: string;
+  let clientId: string;
 
   const base = () => `/api/v1/companies/${owner.companyId}/reports`;
   const auth = () => ({ Authorization: `Bearer ${owner.accessToken}` });
 
-  // Seed: 2 locations, 2 products, various stock levels + transactions
+  // Seed: 2 sites, 2 products, various stock levels + transactions
   beforeEach(async () => {
     owner = await registerOwnerWithCompany();
 
-    // Create two locations
+    // Create two sites
     const [warehouse, store] = await Promise.all([
-      testPrisma.location.create({
+      testPrisma.site.create({
         data: {
           companyId: owner.companyId,
           address: "100 Warehouse Blvd",
-          locationType: "warehouse",
+          siteType: "warehouse",
         },
       }),
-      testPrisma.location.create({
+      testPrisma.site.create({
         data: {
           companyId: owner.companyId,
           address: "200 Store Ave",
-          locationType: "store",
+          siteType: "store",
         },
       }),
     ]);
     warehouseId = warehouse.id;
     storeId = store.id;
+
+    const client = await testPrisma.client.create({
+      data: {
+        companyId: owner.companyId,
+        businessName: "Main Street Market",
+        businessStoreId: "MSM-001",
+        address: "1 Buyer Plaza",
+        pointOfContactName: "Jordan Lee",
+        phoneNumber: "+1 555-220-3333",
+        email: "jordan@msm.com",
+        preferredPaymentMethod: "cash",
+        paymentPreference: "Payment in 2 weeks",
+      },
+    });
+    clientId = client.id;
 
     // Create two products
     const prodA = await request(app)
@@ -61,17 +77,17 @@ describe("Reporting endpoints", () => {
     await request(app)
       .post(`/api/v1/companies/${owner.companyId}/inventory/receive`)
       .set(auth())
-      .send({ productId: productAId, locationId: warehouseId, quantity: 100 })
+      .send({ productId: productAId, siteId: warehouseId, quantity: 100, unitCost: 10 })
       .expect(201);
     await request(app)
       .post(`/api/v1/companies/${owner.companyId}/inventory/receive`)
       .set(auth())
-      .send({ productId: productAId, locationId: storeId, quantity: 5 })
+      .send({ productId: productAId, siteId: storeId, quantity: 5, unitCost: 10 })
       .expect(201);
     await request(app)
       .post(`/api/v1/companies/${owner.companyId}/inventory/receive`)
       .set(auth())
-      .send({ productId: productBId, locationId: warehouseId, quantity: 3 })
+      .send({ productId: productBId, siteId: warehouseId, quantity: 3, unitCost: 20 })
       .expect(201);
 
     // Sell 10 of Widget A from warehouse
@@ -80,19 +96,20 @@ describe("Reporting endpoints", () => {
       .set(auth())
       .send({
         productId: productAId,
-        locationId: warehouseId,
+        siteId: warehouseId,
+        clientId,
         quantity: 10,
         reference: "INV-001",
       })
       .expect(201);
   });
 
-  // ── GET /reports/stock-by-location ────────────────────────────
+  // ── GET /reports/stock-by-site ────────────────────────────
 
-  describe("GET /reports/stock-by-location", () => {
-    it("returns stock grouped by location with totals", async () => {
+  describe("GET /reports/stock-by-site", () => {
+    it("returns stock grouped by site with totals", async () => {
       const res = await request(app)
-        .get(`${base()}/stock-by-location`)
+        .get(`${base()}/stock-by-site`)
         .set(auth())
         .expect(200);
 
@@ -101,7 +118,7 @@ describe("Reporting endpoints", () => {
 
       // Find the warehouse group
       const warehouseGroup = res.body.find(
-        (g: { location: { id: string } }) => g.location.id === warehouseId
+        (g: { site: { id: string } }) => g.site.id === warehouseId
       );
       expect(warehouseGroup).toBeDefined();
       expect(warehouseGroup.items.length).toBe(2); // Widget A + Widget B
@@ -109,28 +126,28 @@ describe("Reporting endpoints", () => {
 
       // Find the store group
       const storeGroup = res.body.find(
-        (g: { location: { id: string } }) => g.location.id === storeId
+        (g: { site: { id: string } }) => g.site.id === storeId
       );
       expect(storeGroup).toBeDefined();
       expect(storeGroup.items.length).toBe(1); // Widget A only
       expect(storeGroup.totalItems).toBe(5);
     });
 
-    it("filters by locationId", async () => {
+    it("filters by siteId", async () => {
       const res = await request(app)
-        .get(`${base()}/stock-by-location`)
-        .query({ locationId: storeId })
+        .get(`${base()}/stock-by-site`)
+        .query({ siteId: storeId })
         .set(auth())
         .expect(200);
 
       expect(res.body.length).toBe(1);
-      expect(res.body[0].location.id).toBe(storeId);
+      expect(res.body[0].site.id).toBe(storeId);
     });
 
     it("includes value calculations", async () => {
       const res = await request(app)
-        .get(`${base()}/stock-by-location`)
-        .query({ locationId: warehouseId })
+        .get(`${base()}/stock-by-site`)
+        .query({ siteId: warehouseId })
         .set(auth())
         .expect(200);
 
@@ -156,6 +173,11 @@ describe("Reporting endpoints", () => {
       expect(res.body.summary.count).toBe(4);
       expect(res.body.summary.totalIn).toBe(108); // 100 + 5 + 3
       expect(res.body.summary.totalOut).toBe(10); // sale of 10
+      expect(typeof res.body.summary.netStockChange).toBe("number");
+      expect(typeof res.body.summary.revenue).toBe("number");
+      expect(typeof res.body.summary.purchaseCost).toBe("number");
+      expect(typeof res.body.summary.grossProfit).toBe("number");
+      expect(res.body.summary.purchaseCost).toBeCloseTo(100, 2);
     });
 
     it("filters by transaction type", async () => {
@@ -181,6 +203,17 @@ describe("Reporting endpoints", () => {
       expect(res.body.transactions[0].inventory.product.id).toBe(productBId);
     });
 
+    it("filters by productName (case-insensitive partial match)", async () => {
+      const res = await request(app)
+        .get(`${base()}/transactions`)
+        .query({ productName: "widget b" })
+        .set(auth())
+        .expect(200);
+
+      expect(res.body.summary.count).toBe(1);
+      expect(res.body.transactions[0].inventory.product.productName).toBe("Widget B");
+    });
+
     it("respects limit", async () => {
       const res = await request(app)
         .get(`${base()}/transactions`)
@@ -189,6 +222,25 @@ describe("Reporting endpoints", () => {
         .expect(200);
 
       expect(res.body.transactions.length).toBe(2);
+    });
+
+    it("filters by transactionId", async () => {
+      const all = await request(app)
+        .get(`${base()}/transactions`)
+        .set(auth())
+        .expect(200);
+
+      const targetId = all.body.transactions[0].id;
+
+      const res = await request(app)
+        .get(`${base()}/transactions`)
+        .query({ transactionId: targetId })
+        .set(auth())
+        .expect(200);
+
+      expect(res.body.summary.count).toBe(1);
+      expect(res.body.transactions).toHaveLength(1);
+      expect(res.body.transactions[0].id).toBe(targetId);
     });
 
     it("filters by date range", async () => {
@@ -229,19 +281,24 @@ describe("Reporting endpoints", () => {
   // ── GET /reports/low-stock ────────────────────────────────────
 
   describe("GET /reports/low-stock", () => {
-    it("returns items at or below default threshold (10)", async () => {
+    it("uses per-product threshold when no global override", async () => {
       const res = await request(app)
         .get(`${base()}/low-stock`)
         .set(auth())
         .expect(200);
 
-      expect(res.body.threshold).toBe(10);
-      expect(res.body.count).toBe(2); // Widget A@store (5) + Widget B@warehouse (3)
+      expect(res.body.threshold).toBeNull();
+      // Both products default to threshold 10
+      // Widget A@store (5) + Widget B@warehouse (3) are below 10
+      expect(res.body.count).toBe(2);
 
       // Should be sorted by quantity ascending
       expect(res.body.items[0].quantity).toBeLessThanOrEqual(
         res.body.items[1].quantity
       );
+
+      // Each item should include the product's lowStockThreshold
+      expect(res.body.items[0].product.lowStockThreshold).toBe(10);
     });
 
     it("respects custom threshold", async () => {
@@ -256,6 +313,27 @@ describe("Reporting endpoints", () => {
       expect(res.body.items[0].product.sku).toBe("WDG-B");
     });
 
+    it("respects per-product custom threshold", async () => {
+      // Set Widget A threshold to 2 (below its store qty of 5)
+      await request(app)
+        .patch(`/api/v1/companies/${owner.companyId}/products/${productAId}`)
+        .set(auth())
+        .send({ lowStockThreshold: 2 })
+        .expect(200);
+
+      const res = await request(app)
+        .get(`${base()}/low-stock`)
+        .set(auth())
+        .expect(200);
+
+      expect(res.body.threshold).toBeNull();
+      // Widget A@store (5) is above its threshold (2) → excluded
+      // Widget A@warehouse (90) is above its threshold (2) → excluded
+      // Widget B@warehouse (3) is at or below default 10 → included
+      expect(res.body.count).toBe(1);
+      expect(res.body.items[0].product.sku).toBe("WDG-B");
+    });
+
     it("returns nothing when all stock is above threshold", async () => {
       const res = await request(app)
         .get(`${base()}/low-stock`)
@@ -267,19 +345,19 @@ describe("Reporting endpoints", () => {
       expect(res.body.items.length).toBe(0);
     });
 
-    it("filters by location", async () => {
+    it("filters by site", async () => {
       const res = await request(app)
         .get(`${base()}/low-stock`)
-        .query({ locationId: storeId })
+        .query({ siteId: storeId })
         .set(auth())
         .expect(200);
 
       // Only Widget A at store (qty 5)
       expect(res.body.count).toBe(1);
-      expect(res.body.items[0].location.id).toBe(storeId);
+      expect(res.body.items[0].site.id).toBe(storeId);
     });
 
-    it("includes product and location details", async () => {
+    it("includes product and site details", async () => {
       const res = await request(app)
         .get(`${base()}/low-stock`)
         .set(auth())
@@ -289,8 +367,8 @@ describe("Reporting endpoints", () => {
       expect(item.product).toBeDefined();
       expect(item.product.productName).toBeDefined();
       expect(item.product.sku).toBeDefined();
-      expect(item.location).toBeDefined();
-      expect(item.location.address).toBeDefined();
+      expect(item.site).toBeDefined();
+      expect(item.site.address).toBeDefined();
     });
   });
 
@@ -299,7 +377,7 @@ describe("Reporting endpoints", () => {
   describe("Authorization", () => {
     it("rejects unauthenticated requests", async () => {
       await request(app)
-        .get(`${base()}/stock-by-location`)
+        .get(`${base()}/stock-by-site`)
         .expect(401);
     });
 

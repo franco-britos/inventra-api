@@ -3,7 +3,7 @@ import { uuid, paginationQuery } from "./common";
 
 /** GET /inventory query params */
 export const inventoryQuerySchema = z.object({
-  locationId: uuid.optional(),
+  siteId: uuid.optional(),
 });
 
 /** GET /transactions query params */
@@ -17,13 +17,14 @@ export const transactionsQuerySchema = paginationQuery.extend({
 
 // ── Report schemas ───────────────────────────────────────────────
 
-/** GET /reports/stock-by-location */
-export const stockByLocationQuerySchema = z.object({
-  locationId: uuid.optional(),
+/** GET /reports/stock-by-site */
+export const stockBySiteQuerySchema = z.object({
+  siteId: uuid.optional(),
 });
 
 /** GET /reports/transactions */
 export const transactionHistoryQuerySchema = paginationQuery.extend({
+  transactionId: uuid.optional(),
   from: z.coerce.date().optional(),
   to: z.coerce.date().optional(),
   type: z
@@ -31,10 +32,12 @@ export const transactionHistoryQuerySchema = paginationQuery.extend({
     .optional(),
   employeeId: uuid.optional(),
   productId: uuid.optional(),
+  productName: z.string().trim().min(1).max(255).optional(),
+  siteId: uuid.optional(),
 });
 
 /** GET /reports/low-stock */
 export const lowStockQuerySchema = z.object({
-  threshold: z.coerce.number().int().min(0).default(10),
-  locationId: uuid.optional(),
+  threshold: z.coerce.number().int().min(0).optional(),
+  siteId: uuid.optional(),
 });

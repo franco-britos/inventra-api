@@ -9,21 +9,37 @@ describe("Core inventory loop", () => {
 
   let owner: Awaited<ReturnType<typeof registerOwnerWithCompany>>;
   let productId: string;
-  let locationId: string;
+  let siteId: string;
+  let clientId: string;
 
-  // Set up an owner with company, product, and location before each test
+  // Set up an owner with company, product, and site before each test
   beforeEach(async () => {
     owner = await registerOwnerWithCompany();
 
-    // Create a location (no endpoint yet, use Prisma directly)
-    const location = await testPrisma.location.create({
+    // Create a site (no endpoint yet, use Prisma directly)
+    const site = await testPrisma.site.create({
       data: {
         companyId: owner.companyId,
         address: "100 Warehouse Blvd",
-        locationType: "warehouse",
+        siteType: "warehouse",
       },
     });
-    locationId = location.id;
+    siteId = site.id;
+
+    const client = await testPrisma.client.create({
+      data: {
+        companyId: owner.companyId,
+        businessName: "Acme Retail",
+        businessStoreId: "ACME-001",
+        address: "500 Buyer St",
+        pointOfContactName: "Ava Carter",
+        phoneNumber: "+1 555-100-0001",
+        email: "ava@acmeretail.com",
+        preferredPaymentMethod: "card",
+        paymentPreference: "Immediate payment",
+      },
+    });
+    clientId = client.id;
 
     // Create a product via the API
     const productRes = await request(app)
@@ -92,7 +108,7 @@ describe("Core inventory loop", () => {
         .set("Authorization", `Bearer ${owner.accessToken}`)
         .send({
           productId,
-          locationId,
+          siteId,
           quantity: 100,
           unitCost: 15.5,
           reference: "PO-001",
@@ -108,13 +124,13 @@ describe("Core inventory loop", () => {
       await request(app)
         .post(`/api/v1/companies/${owner.companyId}/inventory/receive`)
         .set("Authorization", `Bearer ${owner.accessToken}`)
-        .send({ productId, locationId, quantity: 50 })
+        .send({ productId, siteId, quantity: 50, unitCost: 10 })
         .expect(201);
 
       const res = await request(app)
         .post(`/api/v1/companies/${owner.companyId}/inventory/receive`)
         .set("Authorization", `Bearer ${owner.accessToken}`)
-        .send({ productId, locationId, quantity: 30 })
+        .send({ productId, siteId, quantity: 30, unitCost: 10 })
         .expect(201);
 
       expect(res.body.inventory.quantity).toBe(80);
@@ -126,8 +142,9 @@ describe("Core inventory loop", () => {
         .set("Authorization", `Bearer ${owner.accessToken}`)
         .send({
           productId: "00000000-0000-0000-0000-000000000000",
-          locationId,
+          siteId,
           quantity: 10,
+          unitCost: 5,
         })
         .expect(404);
     });
@@ -141,7 +158,7 @@ describe("Core inventory loop", () => {
       await request(app)
         .post(`/api/v1/companies/${owner.companyId}/inventory/receive`)
         .set("Authorization", `Bearer ${owner.accessToken}`)
-        .send({ productId, locationId, quantity: 100 })
+        .send({ productId, siteId, quantity: 100, unitCost: 15 })
         .expect(201);
 
       // Then sell
@@ -150,7 +167,8 @@ describe("Core inventory loop", () => {
         .set("Authorization", `Bearer ${owner.accessToken}`)
         .send({
           productId,
-          locationId,
+          siteId,
+          clientId,
           quantity: 25,
           unitCost: 29.99,
           reference: "INV-001",
@@ -167,14 +185,14 @@ describe("Core inventory loop", () => {
       await request(app)
         .post(`/api/v1/companies/${owner.companyId}/inventory/receive`)
         .set("Authorization", `Bearer ${owner.accessToken}`)
-        .send({ productId, locationId, quantity: 10 })
+        .send({ productId, siteId, quantity: 10, unitCost: 5 })
         .expect(201);
 
       // Try to sell 999
       const res = await request(app)
         .post(`/api/v1/companies/${owner.companyId}/inventory/sale`)
         .set("Authorization", `Bearer ${owner.accessToken}`)
-        .send({ productId, locationId, quantity: 999 })
+        .send({ productId, siteId, clientId, quantity: 999 })
         .expect(400);
 
       expect(res.body.error).toMatch(/insufficient/i);
@@ -184,7 +202,7 @@ describe("Core inventory loop", () => {
       await request(app)
         .post(`/api/v1/companies/${owner.companyId}/inventory/sale`)
         .set("Authorization", `Bearer ${owner.accessToken}`)
-        .send({ productId, locationId, quantity: 1 })
+        .send({ productId, siteId, clientId, quantity: 1 })
         .expect(404);
     });
   });
@@ -197,7 +215,7 @@ describe("Core inventory loop", () => {
       await request(app)
         .post(`/api/v1/companies/${owner.companyId}/inventory/receive`)
         .set("Authorization", `Bearer ${owner.accessToken}`)
-        .send({ productId, locationId, quantity: 100 })
+        .send({ productId, siteId, quantity: 100, unitCost: 10 })
         .expect(201);
 
       // Adjust -10
@@ -206,8 +224,9 @@ describe("Core inventory loop", () => {
         .set("Authorization", `Bearer ${owner.accessToken}`)
         .send({
           productId,
-          locationId,
+          siteId,
           quantity: -10,
+          transactionType: "adjustment",
           reason: "Damaged items",
           notes: "Found during inspection",
         })
@@ -224,14 +243,14 @@ describe("Core inventory loop", () => {
       await request(app)
         .post(`/api/v1/companies/${owner.companyId}/inventory/receive`)
         .set("Authorization", `Bearer ${owner.accessToken}`)
-        .send({ productId, locationId, quantity: 50 })
+        .send({ productId, siteId, quantity: 50, unitCost: 8 })
         .expect(201);
 
       // Adjust +5
       const res = await request(app)
         .post(`/api/v1/companies/${owner.companyId}/inventory/adjust`)
         .set("Authorization", `Bearer ${owner.accessToken}`)
-        .send({ productId, locationId, quantity: 5 })
+        .send({ productId, siteId, quantity: 5, transactionType: "adjustment" })
         .expect(201);
 
       expect(res.body.inventory.quantity).toBe(55);
@@ -242,14 +261,14 @@ describe("Core inventory loop", () => {
       await request(app)
         .post(`/api/v1/companies/${owner.companyId}/inventory/receive`)
         .set("Authorization", `Bearer ${owner.accessToken}`)
-        .send({ productId, locationId, quantity: 10 })
+        .send({ productId, siteId, quantity: 10, unitCost: 5 })
         .expect(201);
 
       // Try to adjust -50
       const res = await request(app)
         .post(`/api/v1/companies/${owner.companyId}/inventory/adjust`)
         .set("Authorization", `Bearer ${owner.accessToken}`)
-        .send({ productId, locationId, quantity: -50 })
+        .send({ productId, siteId, quantity: -50, transactionType: "adjustment" })
         .expect(400);
 
       expect(res.body.error).toMatch(/negative/i);
@@ -264,28 +283,28 @@ describe("Core inventory loop", () => {
       await request(app)
         .post(`/api/v1/companies/${owner.companyId}/inventory/receive`)
         .set("Authorization", `Bearer ${owner.accessToken}`)
-        .send({ productId, locationId, quantity: 100 })
+        .send({ productId, siteId, quantity: 100, unitCost: 12.5 })
         .expect(201);
 
       // Sell 30
       await request(app)
         .post(`/api/v1/companies/${owner.companyId}/inventory/sale`)
         .set("Authorization", `Bearer ${owner.accessToken}`)
-        .send({ productId, locationId, quantity: 30 })
+        .send({ productId, siteId, clientId, quantity: 30 })
         .expect(201);
 
       // Adjust -5 (damaged)
       await request(app)
         .post(`/api/v1/companies/${owner.companyId}/inventory/adjust`)
         .set("Authorization", `Bearer ${owner.accessToken}`)
-        .send({ productId, locationId, quantity: -5 })
+        .send({ productId, siteId, quantity: -5, transactionType: "adjustment" })
         .expect(201);
 
       // Receive 20 more
       await request(app)
         .post(`/api/v1/companies/${owner.companyId}/inventory/receive`)
         .set("Authorization", `Bearer ${owner.accessToken}`)
-        .send({ productId, locationId, quantity: 20 })
+        .send({ productId, siteId, quantity: 20, unitCost: 12.5 })
         .expect(201);
 
       // Verify: 100 - 30 - 5 + 20 = 85

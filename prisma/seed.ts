@@ -13,7 +13,7 @@ async function main() {
   await prisma.inventory.deleteMany();
   await prisma.product.deleteMany();
   await prisma.employee.deleteMany();
-  await prisma.location.deleteMany();
+  await prisma.site.deleteMany();
   await prisma.appUser.deleteMany();
   await prisma.company.deleteMany();
 
@@ -66,50 +66,49 @@ async function main() {
 
   console.log(`  Created ${users.length} users.`);
 
-  // ── Locations ──
-  const acmeWarehouse = await prisma.location.create({
+  // ── Sites ──
+  const acmeWarehouse = await prisma.site.create({
     data: {
       companyId: acmeCorp.id,
       address: "100 Industrial Blvd, Austin, TX 78701",
-      locationType: "warehouse",
+      siteType: "warehouse",
     },
   });
 
-  const acmeStore = await prisma.location.create({
+  const acmeStore = await prisma.site.create({
     data: {
       companyId: acmeCorp.id,
       address: "250 Main St, Austin, TX 78702",
-      locationType: "store",
+      siteType: "store",
     },
   });
 
-  const globalWarehouse = await prisma.location.create({
+  const globalWarehouse = await prisma.site.create({
     data: {
       companyId: globalTrading.id,
       address: "500 Commerce Dr, Miami, FL 33101",
-      locationType: "warehouse",
+      siteType: "warehouse",
     },
   });
 
-  const globalStore = await prisma.location.create({
+  const globalStore = await prisma.site.create({
     data: {
       companyId: globalTrading.id,
       address: "88 Ocean Ave, Miami, FL 33139",
-      locationType: "store",
+      siteType: "store",
     },
   });
 
-  console.log(`  Created ${4} locations.`);
+  console.log(`  Created ${4} sites.`);
 
   // ── Employees ──
   const aliceEmployee = await prisma.employee.create({
     data: {
       userId: alice.id,
       companyId: acmeCorp.id,
-      locationId: acmeWarehouse.id,
+      siteId: acmeWarehouse.id,
       firstName: "Alice",
       lastName: "Johnson",
-      jobTitle: "Warehouse Manager",
     },
   });
 
@@ -117,10 +116,9 @@ async function main() {
     data: {
       userId: bob.id,
       companyId: acmeCorp.id,
-      locationId: acmeStore.id,
+      siteId: acmeStore.id,
       firstName: "Bob",
       lastName: "Smith",
-      jobTitle: "Store Associate",
     },
   });
 
@@ -128,10 +126,9 @@ async function main() {
     data: {
       userId: carol.id,
       companyId: globalTrading.id,
-      locationId: globalWarehouse.id,
+      siteId: globalWarehouse.id,
       firstName: "Carol",
       lastName: "Martinez",
-      jobTitle: "Operations Lead",
     },
   });
 
@@ -139,10 +136,9 @@ async function main() {
     data: {
       userId: dave.id,
       companyId: globalTrading.id,
-      locationId: globalStore.id,
+      siteId: globalStore.id,
       firstName: "Dave",
       lastName: "Lee",
-      jobTitle: "Sales Associate",
     },
   });
 
@@ -204,13 +200,13 @@ async function main() {
   const allProducts = [...acmeProducts, ...globalProducts];
   console.log(`  Created ${allProducts.length} products.`);
 
-  // ── Inventory (stock at each location) ──
+  // ── Inventory (stock at each site) ──
   const inventories = await Promise.all([
     // Acme warehouse stock
     prisma.inventory.create({
       data: {
         productId: acmeProducts[0].id,
-        locationId: acmeWarehouse.id,
+        siteId: acmeWarehouse.id,
         companyId: acmeCorp.id,
         quantity: 500,
       },
@@ -218,7 +214,7 @@ async function main() {
     prisma.inventory.create({
       data: {
         productId: acmeProducts[1].id,
-        locationId: acmeWarehouse.id,
+        siteId: acmeWarehouse.id,
         companyId: acmeCorp.id,
         quantity: 200,
       },
@@ -226,7 +222,7 @@ async function main() {
     prisma.inventory.create({
       data: {
         productId: acmeProducts[2].id,
-        locationId: acmeWarehouse.id,
+        siteId: acmeWarehouse.id,
         companyId: acmeCorp.id,
         quantity: 75,
       },
@@ -235,7 +231,7 @@ async function main() {
     prisma.inventory.create({
       data: {
         productId: acmeProducts[0].id,
-        locationId: acmeStore.id,
+        siteId: acmeStore.id,
         companyId: acmeCorp.id,
         quantity: 50,
       },
@@ -243,7 +239,7 @@ async function main() {
     prisma.inventory.create({
       data: {
         productId: acmeProducts[1].id,
-        locationId: acmeStore.id,
+        siteId: acmeStore.id,
         companyId: acmeCorp.id,
         quantity: 30,
       },
@@ -252,7 +248,7 @@ async function main() {
     prisma.inventory.create({
       data: {
         productId: globalProducts[0].id,
-        locationId: globalWarehouse.id,
+        siteId: globalWarehouse.id,
         companyId: globalTrading.id,
         quantity: 1000,
       },
@@ -260,7 +256,7 @@ async function main() {
     prisma.inventory.create({
       data: {
         productId: globalProducts[1].id,
-        locationId: globalWarehouse.id,
+        siteId: globalWarehouse.id,
         companyId: globalTrading.id,
         quantity: 150,
       },
@@ -269,7 +265,7 @@ async function main() {
     prisma.inventory.create({
       data: {
         productId: globalProducts[0].id,
-        locationId: globalStore.id,
+        siteId: globalStore.id,
         companyId: globalTrading.id,
         quantity: 120,
       },

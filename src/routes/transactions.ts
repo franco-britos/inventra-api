@@ -44,7 +44,7 @@ router.get(
             product: {
               select: { id: true, productName: true, sku: true },
             },
-            location: {
+            site: {
               select: { id: true, address: true },
             },
           },
@@ -54,6 +54,13 @@ router.get(
             id: true,
             firstName: true,
             lastName: true,
+          },
+        },
+        client: {
+          select: {
+            id: true,
+            businessName: true,
+            businessStoreId: true,
           },
         },
       },
@@ -87,8 +94,8 @@ router.get(
             product: {
               select: { id: true, productName: true, sku: true, price: true },
             },
-            location: {
-              select: { id: true, address: true, locationType: true },
+            site: {
+              select: { id: true, address: true, siteType: true },
             },
           },
         },
@@ -97,6 +104,13 @@ router.get(
             id: true,
             firstName: true,
             lastName: true,
+          },
+        },
+        client: {
+          select: {
+            id: true,
+            businessName: true,
+            businessStoreId: true,
           },
         },
       },

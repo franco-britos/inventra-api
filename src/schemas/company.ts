@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { locationPayload } from "./location";
+import { sitePayload } from "./site";
 
 export const createCompanySchema = z.object({
   companyName: z
@@ -14,10 +14,9 @@ export const createCompanySchema = z.object({
     .string()
     .min(1, "Last name is required.")
     .max(100, "Last name is too long."),
-  jobTitle: z.string().max(100, "Job title is too long.").optional(),
-  /** Optional initial locations to create alongside the company */
-  locations: z
-    .array(locationPayload)
-    .min(1, "At least one location is required when locations are provided.")
+  /** Optional initial sites to create alongside the company */
+  sites: z
+    .array(sitePayload)
+    .min(1, "At least one site is required when sites are provided.")
     .optional(),
 });

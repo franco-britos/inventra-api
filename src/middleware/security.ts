@@ -10,11 +10,11 @@ export const securityHeaders = helmet();
 export const corsPolicy = cors({
   origin: env.CORS_ORIGIN,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
-  allowedHeaders: ["Content-Type", "Authorization"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Reauth-Token"],
   maxAge: 86400, // 24 h preflight cache
 });
 
-const isTest = env.NODE_ENV === "test";
+const skipRateLimit = env.NODE_ENV === "test" || env.NODE_ENV === "development";
 
 /** Global rate limiter — 100 requests per 15 min window per IP */
 export const rateLimiter = rateLimit({
@@ -23,7 +23,7 @@ export const rateLimiter = rateLimit({
   standardHeaders: "draft-8",
   legacyHeaders: false,
   message: { error: "Too many requests, please try again later." },
-  skip: () => isTest,
+  skip: () => skipRateLimit,
 });
 
 /** Stricter rate limiter for auth endpoints — 10 requests per 15 min per IP */
@@ -33,5 +33,5 @@ export const authRateLimiter = rateLimit({
   standardHeaders: "draft-8",
   legacyHeaders: false,
   message: { error: "Too many auth attempts, please try again later." },
-  skip: () => isTest,
+  skip: () => skipRateLimit,
 });

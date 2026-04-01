@@ -13,7 +13,7 @@ router.post("/", validateBody(createCompanySchema), async (req, res) => {
     return;
   }
 
-  const { companyName, firstName, lastName, jobTitle, locations } = req.body;
+  const { companyName, firstName, lastName, sites } = req.body;
 
   const result = await prisma.$transaction(async (tx) => {
     const company = await tx.company.create({
@@ -26,35 +26,85 @@ router.post("/", validateBody(createCompanySchema), async (req, res) => {
         companyId: company.id,
         firstName,
         lastName,
-        jobTitle: jobTitle ?? null,
         role: "owner",
       },
     });
 
-    // Optionally create initial locations
-    let createdLocations: {
+    // Optionally create initial sites
+    interface SiteRow {
       id: string;
       address: string;
-      locationType: string;
-    }[] = [];
+      unit: string | null;
+      city: string | null;
+      state: string | null;
+      zipCode: string | null;
+      country: string | null;
+      placeId: string | null;
+      vin: string | null;
+      driverName: string | null;
+      licensePlate: string | null;
+      shortDescription: string | null;
+      siteType: string;
+    }
+    let createdSites: SiteRow[] = [];
 
-    if (locations && locations.length > 0) {
-      createdLocations = await Promise.all(
-        locations.map(
-          (loc: { address: string; locationType: "warehouse" | "store" }) =>
-            tx.location.create({
+    if (sites && sites.length > 0) {
+      createdSites = await Promise.all(
+        sites.map(
+          (site: {
+            address?: string;
+            unit?: string;
+            city?: string;
+            state?: string;
+            zipCode?: string;
+            country?: string;
+            placeId?: string;
+            vin?: string;
+            driverName?: string;
+            licensePlate?: string;
+            shortDescription?: string;
+            siteType: "warehouse" | "store" | "vehicle";
+          }) =>
+            tx.site.create({
               data: {
                 companyId: company.id,
-                address: loc.address,
-                locationType: loc.locationType,
+                address:
+                  site.siteType === "vehicle"
+                    ? (site.address?.trim() || `Vehicle ${site.vin?.trim() || ""}`).trim()
+                    : (site.address ?? "").trim(),
+                unit: site.unit ?? null,
+                city: site.city ?? null,
+                state: site.state ?? null,
+                zipCode: site.zipCode ?? null,
+                country: site.country ?? null,
+                placeId: site.placeId ?? null,
+                vin: site.vin ?? null,
+                driverName: site.driverName ?? null,
+                licensePlate: site.licensePlate ?? null,
+                shortDescription: site.shortDescription ?? null,
+                siteType: site.siteType,
               },
-              select: { id: true, address: true, locationType: true },
+              select: {
+                id: true,
+                address: true,
+                unit: true,
+                city: true,
+                state: true,
+                zipCode: true,
+                country: true,
+                placeId: true,
+                vin: true,
+                driverName: true,
+                licensePlate: true,
+                shortDescription: true,
+                siteType: true,
+              },
             })
         )
       );
     }
 
-    return { company, employee, locations: createdLocations };
+    return { company, employee, sites: createdSites };
   });
 
   res.status(201).json({
@@ -69,7 +119,7 @@ router.post("/", validateBody(createCompanySchema), async (req, res) => {
       lastName: result.employee.lastName,
       role: result.employee.role,
     },
-    locations: result.locations,
+    sites: result.sites,
   });
 });
 
@@ -98,7 +148,7 @@ router.get("/:companyId", validateUUIDParams("companyId"), async (req, res) => {
       updatedAt: true,
       _count: {
         select: {
-          locations: true,
+          sites: true,
           employees: true,
           products: true,
         },
@@ -110,7 +160,14 @@ router.get("/:companyId", validateUUIDParams("companyId"), async (req, res) => {
     res.status(404).json({ error: "Company not found" });
     return;
   }
-  res.json(company);
+  res.json({
+    ...company,
+    _count: {
+      sites: company._count.sites,
+      employees: company._count.employees,
+      products: company._count.products,
+    },
+  });
 });
 
 export default router;

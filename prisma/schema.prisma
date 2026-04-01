@@ -14,9 +14,12 @@ datasource db {
 // ENUMS
 // =======================
 
-enum LocationType {
+enum SiteType {
   warehouse
   store
+  vehicle
+
+  @@map("SiteType")
 }
 
 enum EmployeeRole {
@@ -33,6 +36,12 @@ enum TransactionType {
   transfer
 }
 
+enum PaymentMethod {
+  cash
+  card
+  money_order
+}
+
 // =======================
 // COMPANY
 // =======================
@@ -44,11 +53,12 @@ model Company {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
-  locations             Location[]
+  sites                 Site[]
   employees             Employee[]
   products              Product[]
   inventories           Inventory[]
   inventoryTransactions InventoryTransaction[]
+  clients               Client[]
   invites               Invite[]
 
   @@map("company")
@@ -70,6 +80,12 @@ model AppUser {
   passwordResetToken     String?   @map("password_reset_token") @db.VarChar
   passwordResetExpiresAt DateTime? @map("password_reset_expires_at") @db.Timestamptz
 
+  mfaTotpEnabled        Boolean   @default(false) @map("mfa_totp_enabled")
+  mfaTotpSecret         String?   @map("mfa_totp_secret") @db.VarChar
+  mfaEmailEnabled       Boolean   @default(false) @map("mfa_email_enabled")
+  mfaEmailCode          String?   @map("mfa_email_code") @db.VarChar
+  mfaEmailCodeExpiresAt DateTime? @map("mfa_email_code_expires_at") @db.Timestamptz
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
@@ -80,15 +96,25 @@ model AppUser {
 }
 
 // =======================
-// LOCATION
+// SITE
 // =======================
 
-model Location {
+model Site {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   companyId    String       @map("company_id") @db.Uuid
   address      String       @db.VarChar
-  locationType LocationType @map("location_type")
+  unit         String?      @db.VarChar
+  city         String?      @db.VarChar
+  state        String?      @db.VarChar
+  zipCode      String?      @map("zip_code") @db.VarChar
+  country      String?      @db.VarChar
+  placeId      String?      @map("place_id") @db.VarChar
+  vin          String?      @db.VarChar
+  driverName   String?      @map("driver_name") @db.VarChar
+  licensePlate String?      @map("license_plate") @db.VarChar
+  shortDescription String?  @map("short_description") @db.VarChar
+  siteType SiteType @map("site_type")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
@@ -98,7 +124,7 @@ model Location {
   inventories Inventory[]
 
   @@index([companyId])
-  @@map("location")
+  @@map("site")
 }
 
 // =======================
@@ -110,11 +136,10 @@ model Employee {
 
   userId     String  @map("user_id") @db.Uuid
   companyId  String  @map("company_id") @db.Uuid
-  locationId String? @map("location_id") @db.Uuid
+  siteId String? @map("site_id") @db.Uuid
 
   firstName String       @map("first_name") @db.VarChar
   lastName  String       @map("last_name") @db.VarChar
-  jobTitle  String?      @map("job_title") @db.VarChar
   role      EmployeeRole @default(staff)
 
   isActive Boolean   @default(true) @map("is_active")
@@ -125,12 +150,12 @@ model Employee {
 
   user     AppUser   @relation(fields: [userId], references: [id], onDelete: Cascade)
   company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  location Location? @relation(fields: [locationId], references: [id], onDelete: SetNull)
+  site Site? @relation(fields: [siteId], references: [id], onDelete: SetNull)
 
   inventoryTransactions InventoryTransaction[]
 
   @@unique([userId, companyId])
-  @@index([locationId])
+  @@index([siteId])
   @@map("employee")
 }
 
@@ -141,11 +166,13 @@ model Employee {
 model Product {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
-  companyId   String  @map("company_id") @db.Uuid
-  productName String  @map("product_name") @db.VarChar
-  sku         String  @db.VarChar
-  price       Decimal @db.Decimal(10, 2)
-  description String? @db.Text
+  companyId   String    @map("company_id") @db.Uuid
+  productName String    @map("product_name") @db.VarChar
+  sku         String    @db.VarChar
+  price             Decimal   @db.Decimal(10, 2)
+  description       String?   @db.Text
+  lowStockThreshold Int       @default(10) @map("low_stock_threshold")
+  archivedAt        DateTime? @map("archived_at") @db.Timestamptz
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
@@ -159,27 +186,28 @@ model Product {
 }
 
 // =======================
-// INVENTORY (PER LOCATION)
+// INVENTORY (PER SITE)
 // =======================
 
 model Inventory {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
-  productId  String @map("product_id") @db.Uuid
-  locationId String @map("location_id") @db.Uuid
-  companyId  String @map("company_id") @db.Uuid
-  quantity   Int
+  productId String @map("product_id") @db.Uuid
+  siteId    String @map("site_id") @db.Uuid
+  companyId String @map("company_id") @db.Uuid
+  quantity        Int
+  averageUnitCost Decimal @default(0) @map("average_unit_cost") @db.Decimal(10, 2)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
 
-  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  location Location @relation(fields: [locationId], references: [id], onDelete: Cascade)
-  company  Company  @relation(fields: [companyId], references: [id])
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  site    Site    @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id])
 
   inventoryTransactions InventoryTransaction[]
 
-  @@unique([productId, locationId])
+  @@unique([productId, siteId])
   @@map("inventory")
 }
 
@@ -193,24 +221,59 @@ model InventoryTransaction {
   inventoryId     String          @map("inventory_id") @db.Uuid
   companyId       String          @map("company_id") @db.Uuid
   employeeId      String?         @map("employee_id") @db.Uuid
+  clientId        String?         @map("client_id") @db.Uuid
   transactionType TransactionType @map("transaction_type")
 
-  quantityChange Int      @map("quantity_change")
-  unitCost       Decimal? @map("unit_cost") @db.Decimal(10, 2)
-  reference      String?  @db.VarChar
-  notes          String?  @db.Text
+  quantityChange    Int      @map("quantity_change")
+  unitCost          Decimal? @map("unit_cost") @db.Decimal(10, 2)
+  costBasisUnitCost Decimal? @map("cost_basis_unit_cost") @db.Decimal(10, 2)
+  cogsAmount        Decimal? @map("cogs_amount") @db.Decimal(10, 2)
+  reference         String?  @db.VarChar
+  notes             String?  @db.Text
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   inventory Inventory @relation(fields: [inventoryId], references: [id], onDelete: Restrict)
   company   Company   @relation(fields: [companyId], references: [id], onDelete: Restrict)
   employee  Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+  client    Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
   @@index([inventoryId])
   @@index([companyId])
   @@index([employeeId])
+  @@index([clientId])
   @@index([createdAt])
   @@map("inventory_transaction")
+}
+
+// =======================
+// CLIENT
+// =======================
+
+model Client {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  companyId             String        @map("company_id") @db.Uuid
+  businessName          String        @map("business_name") @db.VarChar
+  businessStoreId       String        @map("business_store_id") @db.VarChar
+  address               String        @db.VarChar
+  pointOfContactName    String        @map("point_of_contact_name") @db.VarChar
+  phoneNumber           String        @map("phone_number") @db.VarChar
+  email                 String        @db.VarChar
+  preferredPaymentMethod PaymentMethod @map("preferred_payment_method")
+  paymentPreference     String        @map("payment_preference") @db.VarChar
+  archivedAt            DateTime?     @map("archived_at") @db.Timestamptz
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz
+
+  company               Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  inventoryTransactions InventoryTransaction[]
+
+  @@index([companyId])
+  @@index([businessStoreId])
+  @@unique([companyId, businessStoreId])
+  @@map("client")
 }
 
 // =======================

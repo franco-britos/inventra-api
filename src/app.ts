@@ -3,6 +3,7 @@ import { securityHeaders, corsPolicy, rateLimiter, authRateLimiter } from "./mid
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler";
 import { authenticate } from "./middleware/authenticate";
 import authRouter from "./routes/auth";
+import mfaRouter from "./routes/mfa";
 import routes from "./routes";
 
 const app = express();
@@ -24,6 +25,7 @@ app.get("/health", (_req, res) => {
 app.use("/api/v1/auth", authRateLimiter, authRouter);
 
 // ── Protected routes (JWT required) ─────────────────────
+app.use("/api/v1/mfa", authenticate, mfaRouter);
 app.use("/api/v1", authenticate, routes);
 
 // ── Error handling ──────────────────────────────────────
