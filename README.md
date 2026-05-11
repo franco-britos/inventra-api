@@ -149,4 +149,4 @@ inventra-api/
 
 ## License
 
-ISC
+[MIT](LICENSE)
