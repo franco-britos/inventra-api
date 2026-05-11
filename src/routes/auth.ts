@@ -203,34 +203,40 @@ router.post(
     const GENERIC_MESSAGE =
       "If an account with that email exists, a reset link has been sent.";
 
-    const user = await prisma.appUser.findUnique({
-      where: { email },
-      select: { id: true, email: true, isActive: true },
-    });
-
-    if (!user || !user.isActive) {
-      res.json({ message: GENERIC_MESSAGE });
-      return;
-    }
-
-    const rawToken = crypto.randomBytes(32).toString("hex");
-    const hashedToken = hashToken(rawToken);
-
-    await prisma.appUser.update({
-      where: { id: user.id },
-      data: {
-        passwordResetToken: hashedToken,
-        passwordResetExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
-      },
-    });
-
     try {
-      await sendPasswordResetEmail(user.email, rawToken);
-    } catch {
-      // Email failure should not reveal account existence
-    }
+      const user = await prisma.appUser.findUnique({
+        where: { email },
+        select: { id: true, email: true, isActive: true },
+      });
 
-    res.json({ message: GENERIC_MESSAGE });
+      if (!user || !user.isActive) {
+        res.json({ message: GENERIC_MESSAGE });
+        return;
+      }
+
+      const rawToken = crypto.randomBytes(32).toString("hex");
+      const hashedToken = hashToken(rawToken);
+
+      await prisma.appUser.update({
+        where: { id: user.id },
+        data: {
+          passwordResetToken: hashedToken,
+          passwordResetExpiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        },
+      });
+
+      try {
+        await sendPasswordResetEmail(user.email, rawToken);
+      } catch {
+        // Email failure should not reveal account existence
+      }
+
+      res.json({ message: GENERIC_MESSAGE });
+    } catch (err) {
+      // DB or other failures: same response so we do not leak infrastructure state
+      console.error("[auth/forgot-password]", err);
+      res.json({ message: GENERIC_MESSAGE });
+    }
   }
 );
 

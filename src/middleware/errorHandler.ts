@@ -3,7 +3,8 @@ import { env } from "../config/env";
 
 /**
  * Global error handler. Catches anything that slips through route handlers.
- * In production, never expose stack traces or internal details.
+ * Never send raw `err.message` to clients — it often contains DB/Prisma details.
+ * Full details stay in server logs (and stack traces in non-production).
  */
 export function errorHandler(
   err: Error,
@@ -12,10 +13,22 @@ export function errorHandler(
   _next: NextFunction
 ): void {
   console.error("[ERROR]", err);
+  if (env.NODE_ENV !== "production" && err.stack) {
+    console.error(err.stack);
+  }
 
-  const status = (err as any).status ?? 500;
+  const rawStatus = (err as { status?: unknown }).status;
+  const status =
+    typeof rawStatus === "number" &&
+    rawStatus >= 400 &&
+    rawStatus < 600
+      ? rawStatus
+      : 500;
+
   const message =
-    env.NODE_ENV === "production" ? "Internal server error" : err.message;
+    status >= 500
+      ? "Something went wrong. Please try again later."
+      : "Unable to complete this request.";
 
   res.status(status).json({ error: message });
 }
